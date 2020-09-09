@@ -1,0 +1,207 @@
+---
+title: "Convert Record Data to Transactions for Association Rule Mining in R"
+author: "Andrea Smith"
+date: "August 1, 2018"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# INTRODUCTION
+In an effort to better target their customer for the new PEP (Personal Equity Plan), the marketing department has decided to build customer profiles that will assist with customer targeting for this and future marketing campaigns. By segmenting customers and determining what profile of customers will fit the the model, the marketing department will be able to capture more business which will translate to growth for the firm. 
+
+The marketing department has kept records on previous direct mail campaigns which include information on customer demographics like age, sex, region they live, income, marital status, children in the household, and their corresponding banking information. This information will be used to build customer profiles for the purpose of making better decisions on how best to  target customers for the new PEP (Personal Equity Plan). 
+
+
+# ANALYSIS
+# Subsection 1: Data Preprocessing
+
+The arules package in R was used to complete the task of analyzing this dataset. The bank dataset was loaded into R using the read.csv() function. In order to complete the datamining techniques required for this analysis, the following libraries were loaded into R:
+
+## Code required to load the libraries
+```{r}
+library(plyr)
+library(dplyr)
+library(arules)
+library(arulesViz)
+```
+
+## Code required to load the dataset
+```{r}
+bd = read.csv("C:/Users/aleev/Desktop/gitprojects/Association Rules/bankdata_csv_all.csv")
+```
+
+After loading the data into R, data exploration was performed to better understand the data and determine if and what type of conversions should occur. The str() command revealed a dataframe with 12 variables(or attributes) and 600 records. The summary() function is used to provide summary statistics for all of the attributes. The str() command reveals that a few transformations are needed to convert the record data into transaction data required to run the arules package for Association Rules Mining in R. Age, income, and children need to be converted to factor variables and disecretized. 
+
+## Data Exploration
+```{r}
+#View the structure and summary of the dataset
+str(bd)
+summary(bd)
+```
+
+The raw data is also explored using visualations in R to understand the numeric variables prior to conversion. The average income is less than $30,000 and the average age is ~40 years old. Age and income are positively correlated. As age increases so does income.
+
+## Visualize the data
+```{r}
+boxplot(bd$income, main="Customer Income Distribution") 
+boxplot(bd$age, main="Customer Age Distribution", color="purple")
+plot(bd$age, bd$income)
+```
+
+
+The first step is to remove the id column. Secondly, discretize the age variable and convert all numeric variables to nominal (factor variables).  
+
+## Remove id column
+```{r}
+bd <- bd[ ,2:12]
+```
+
+
+### Discretize age by customized bin
+
+```{r}
+bd$age <- cut(bd$age, breaks = c(0,10,20,30,40,50,60,Inf),labels=c("child","teens","twenties","thirties","fourties","fifties","old"))
+```
+
+### Discretize income by equal-width bin
+
+```{r}
+min_income <- min(bd$income)
+max_income <- max(bd$income)
+bins = 3 
+width=(max_income - min_income)/bins;
+bd$income = cut(bd$income, breaks=seq(min_income, max_income, width))
+```
+
+### Convert numeric to nominal for "children"
+
+```{r}
+bd$children=factor(bd$children)
+```
+
+
+# View the structure of the data after to ensure the data is in the format required for the apriori model to generate.
+```{r}
+str(bd)
+```
+
+# ANALYSIS
+# Subsection 2: Data Analysis
+
+
+The apriori algorithm (myRules) will generate the frequent itemset. Of particular interest is examination of the support and confidence coupled with the lift will provide proof of a good rule to use for the model. The support determines how often a rule appears in a complete dataset and the confidence determines how frequently items appear together in transactions. Lift is a measure of independence. It measures the interestingness of the rule and should not be lower than 1. It compares the probability of the items occurring together versus not occurring together.
+
+The association rules mining algorithm returned a result of 112 rules to examine. 
+## Run the apriori algorithm to generate the frequent itemset of rules
+## It is required to set the minimum support and confidence values
+
+```{r}
+myRules = apriori(bd, parameter = list(supp = 0.001, conf = 0.9, maxlen = 3))
+```
+
+As seen in the summary results of myRules, a support of .12 is the max support in the dataset. Therefore, .12 could be a good baseline to further remove items with low support and focus on more practical relevant rules. By changing the support to .12, 5 rules are generated.  
+```{r}
+myRules2 = apriori(bd, parameter = list(supp = 0.1, conf = 0.85, maxlen=3))
+```
+
+The support is further increased to remove itemsets with low support. At the support of .06, 29 strong rules have been generated.
+```{r}
+myRules3 = apriori(bd, parameter = list(supp = 0.08, conf = 0.9, maxlen = 3))
+```
+
+Target rules rhs where customers obtained the PEP
+```{r}
+rules<- apriori(bd, parameter = list(supp = 0.14, conf = 0.095, minlen = 3),
+               appearance = list(default="lhs", rhs="pep=YES"),
+               control = list(verbose=F))
+rules
+```
+
+```{r}
+rules1<- apriori(bd, parameter = list(supp = 0.20, conf = 0.095, minlen = 3),
+               appearance = list(default="lhs", rhs="pep=NO"),
+               control = list(verbose=F))
+rules
+```
+
+
+## RESULTS
+
+This set of rules generated 112 rules. The itemset has been narrowed to only focus on relevant rules with lift greater than 2. According to rules 25, 27, and 28 customers who have an income over $40,000 and have children are likely to obtain a PEP. They have support greater than 1 which mean their results are meaningful. Their support ranges between 1.3% and 3.67% indicating these itemsets appeared together this ~2% of the time. And with a confidence greater than .95, the likelihood of these itemsets appearing together is high.
+```{r}
+myRules<- myRules[quality(myRules)$lift>2]
+summary(myRules)
+options(digits = 2)
+inspect(myRules[1:30])
+```
+
+
+```{r}
+#plot these rules interactively
+plot(myRules, method="graph", interactive=TRUE)
+```
+
+With this set of rules, support was increased significantly and confidence decreased. The apriori generated a set of 11 rules to examine. According to rule #7 customers in their 20's who don't obtain a PEP are likely to have low income. 
+```{r}
+summary(myRules2)
+options(digits = 2)
+inspect(myRules2)
+```
+
+```{r}
+#plot these rules interactively
+plot(myRules2, method="graph", interactive=TRUE)
+```
+
+
+According to rule #4 below, customer with an income greater than $40,000 who obtain a PEP are also likely to have a savings account. This rule is seen in 9% of the dataset and has a confidence of 1. Conversly, according to rule #13, customers in their 20's who don't obtain a PEP are likely to have income 5,000 dollars. This rule is seen in 12.2% of the dataset and these itemsets will be observed together 92% of the time. 
+
+```{r}
+summary(myRules3)
+options(digits=2)
+inspect(myRules3)
+```
+
+```{r}
+#plot these rules interactively
+plot(myRules3, method="graph", interactive=TRUE)
+```
+From a business standpoint and examination of not only support, confidence, and lift is relevant to determining if an itemset is interesting but also the itemsets themselves. By setting the PEP on the right hand side of the model, itemsets where customers are likely to obtain a PEP are paired with other customer profile data. 
+
+Rule #7, is interesting because a customer who has a savings account, and active account, but does not have a mortgage is likely to receive a PEP at a 49% confidence level and is seen to be the case 17% of the times. Rule #21 with an income of ~$24000 who has a current active account is likely to obtain a PEP at a 50% confidence level and is seen to be the case 15% of the times. And most interesting of the output, rule #14, a customer who is not married, has no mortgage is likely to obtain a PEP at a 49% confidence level and seen to be the case 15% of the times. Additionally, according to rule #6, #12, #15 are likely to obtain a PEP, but not necessarily males who are married according to rule #23.
+
+```{r}
+options(digits=2)
+inspect(rules[1:23])
+rules<-sort(rules, decreasing=TRUE,by='support')
+```
+
+```{r}
+#plot these rules interactively
+plot(rules, method="graph", interactive=TRUE)
+```
+
+According to rule #1, with the highest lift at 1.44, customers who are married, do not have children are not likely to obtain a PEP. This is found to be true 23% of the time with 78% confidence. It's also interesting to note by looking at the lift for rules #6, #14, and #16, females are not likely to obtain a PEP if they are married, have a savings account, or active account. 
+
+```{r}
+options(digits=2)
+inspect(rules1)
+rules1<-sort(rules1, decreasing=TRUE,by='lift')
+```
+
+```{r}
+#plot these rules interactively
+plot(rules1, method="graph", interactive=TRUE)
+```
+## Conclusion
+Not all customers are created equally. The models ran in this report are proof of that fact. The examination of customer behavior produced surprising results. By using the results found in this report, the firm will be better posed for future growth by capturing relevant customers who are interested in the PEP product.
+
+It was interesting to find that customers on the higher income earning scale were not the most attractive to fit the profile of customers who would be most likely to obtain a PEP. From a business standpoint the customers who already have products with the firm are observed to be a good fit for future product like the PEP. Males tend to be more likely than females, and marriage was not a good indicator of likelihood to obtain a PEP.
+
+Using this knowledge gained will enable the firm to build robust customer profile models. By having a good understanding of the firms customers and who will be best to target for the PEP product will not only increase EBITDA but also reduce wasted costs. This is a win-win for both the customers and the firm because the correct relevant customers will be targeting bringing value to both parties. 
+
+
